@@ -5,4 +5,4 @@ COPY data/modules /nakama/data/modules
 
 EXPOSE 7350
 
-ENTRYPOINT ["sh", "-c", "echo DB=$NAKAMA_DATABASE_ADDRESS && /nakama/nakama migrate up --database.address \"$NAKAMA_DATABASE_ADDRESS\" && exec /nakama/nakama --database.address \"$NAKAMA_DATABASE_ADDRESS\" --config /nakama/data/local.yml"]
+ENTRYPOINT ["sh", "-c", "echo DB=$NAKAMA_DATABASE_ADDRESS && /nakama/nakama migrate up --database.address \"$NAKAMA_DATABASE_ADDRESS\" && exec /nakama/nakama --database.address \"$NAKAMA_DATABASE_ADDRESS\" --runtime.js_entrypoint match.js --config /nakama/data/local.yml"]
