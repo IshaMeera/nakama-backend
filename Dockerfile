@@ -5,4 +5,4 @@ COPY data/modules /nakama/data/modules
 
 EXPOSE 7350
 
-CMD ["sh", "-c", "nakama migrate up --database.address $NAKAMA_DATABASE_ADDRESS && nakama --database.address $NAKAMA_DATABASE_ADDRESS --config /nakama/data/local.yml"]
+CMD ["sh", "-c", "echo DB=$NAKAMA_DATABASE_ADDRESS && nakama migrate up --database.address $NAKAMA_DATABASE_ADDRESS && nakama --database.address $NAKAMA_DATABASE_ADDRESS --config /nakama/data/local.yml"]
