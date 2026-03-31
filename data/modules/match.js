@@ -242,13 +242,13 @@ function findOrCreateMatch(ctx, logger, nk, payload){
 
 function InitModule(ctx, logger, nk, initializer) {
     initializer.registerMatch("tic-tac-toe", {
-        matchInit,
-        matchJoin,
-        matchLoop,
-        matchLeave,
-        matchTerminate,
-        matchSignal,
-        matchJoinAttempt
+        matchInit: matchInit,
+        matchJoin: matchJoin,
+        matchLoop: matchLoop,
+        matchLeave: matchLeave,
+        matchTerminate: matchTerminate,
+        matchSignal: matchSignal,
+        matchJoinAttempt: matchJoinAttempt
     });
 
     initializer.registerRpc("create_match", createMatchRpc);
