@@ -1,9 +1,2 @@
-database:
-  address:
-    - "postgres:5432"
-  user: "postgres"
-  password: "localdb"
-  name: "nakama"
-
 logger:
   level: "debug"
