@@ -9,9 +9,14 @@ function matchInit(ctx, logger, nk, params) {
                 ["", "", ""]
             ],
             players: [],
-            turn: "X",
+            turn: null,
             winner: null,
             turnStartTime: Date.now(),
+            botEnabled: false,
+            botSymbol: "O",
+            winReason: null,
+            waitingForPlayer: false,
+            waitStart: null,
         },
         tickRate: 1,
         label: "tic-tac-toe",
@@ -31,14 +36,38 @@ function matchJoin(ctx, logger, nk, dispatcher, tick, state, presences) {
                 logger.info("Match already full");
                 return;
             }
-            const symbol = state.players.length === 0 ? "X" : "O";
+            // const symbol = state.players.length === 0 ? "X" : "O";
             state.players.push({
                 userId: p.userId,
-                symbol
+                symbol: null
             })
-            logger.info(`Player joined: ${p.userId} as ${symbol}`);
+            logger.info(`Player joined: ${p.userId}`);
         }else{
-            logger.info(`Player rejoined: ${p.userId} as ${player.symbol}`)
+            logger.info(`Player rejoined: ${p.userId}`)
+        }
+
+       if (state.players.length === 1) {
+            state.waitingForPlayer = true;
+            state.waitStart = Date.now() - state.turnStartTime > 800;
+
+            logger.info("Waiting for second player...");
+        }
+        if(state.players.length === 2){
+            //real match
+            state.botEnabled = false;
+            state.waitingForPlayer = false;
+
+            const [p1, p2] = state.players;
+            if(Math.random() < 0.5){
+                p1.symbol = "X";
+                p2.symbol = "O";
+            }else{
+                p1.symbol = "O";
+                p2.symbol = "X";
+            }
+            state.turn = Math.random() < 0.5 ? "X" : "O";
+
+            logger.info("2-player match started");
         }
     });
 
@@ -76,10 +105,26 @@ function checkWinner(board) {
     return null;
 }
 
+function findWinningMove(board, symbol){
+    for(let i=0; i<3; i++){
+        for(let j=0; j<3; j++){
+            if(board[i][j] === ""){
+                board[i][j] = symbol;
+
+                if(checkWinner(board)){
+                    board[i][j] = "";
+                    return[i, j];
+                }
+                board[i][j] = "";
+            }
+        }
+    }
+    return null;
+}
+
 //receice move->validate->placemove->check winner-> broadcast
 function matchLoop(ctx, logger, nk, dispatcher, tick, state, messages) {
     let updated = false;
-    const TURN_LIMIT = 30000;
     messages.forEach(msg => {
         let data = JSON.parse(nk.binaryToString(msg.data));
         let { x, y } = data;
@@ -115,16 +160,6 @@ function matchLoop(ctx, logger, nk, dispatcher, tick, state, messages) {
             return;
         };
 
-        // if(state.players.length === 1 && !state.winner){
-        //     //simple bot move
-        //     for(let i=0; i<3; i++){
-        //         if(state.board[i][j] === ""){
-        //             state.board[i][j] = "O";
-        //             state.turn = "X";
-        //             return;
-        //         }
-        //     }
-        // }
         //place move
         state.board[x][y] = state.turn;
         logger.info("Move placed at:" + x + "," + y);
@@ -154,12 +189,109 @@ function matchLoop(ctx, logger, nk, dispatcher, tick, state, messages) {
     dispatcher.broadcastMessage(1, JSON.stringify(state));
     }
 
+    if(
+        state.players.length === 1 &&
+        state.waitingForPlayer &&
+        !state.botEnabled &&
+        Date.now() - state.waitStart > 3000
+    ) {
+        state.botEnabled = true;
+
+        const player = state.players[0];
+
+        if (Math.random() < 0.5) {
+            player.symbol = "X";
+            state.botSymbol = "O";
+        } else {
+            player.symbol = "O";
+            state.botSymbol = "X";
+        }
+
+        state.turn = Math.random() < 0.5 ? "X" : "O";
+
+        state.waitingForPlayer = false;
+
+        logger.info("Bot activated after waiting");
+    }
+
+    //bot move
+    if (
+        state.botEnabled &&
+        state.turn === state.botSymbol &&
+        !state.winner
+    ) {
+    const bot = state.botSymbol;
+    const player = bot === "X"?"O":"X";
+
+    //try to win
+    let move = findWinningMove(state.board, bot);
+
+    //try to blk player
+    if(!move){
+        move = findWinningMove(state.board, player);
+    }
+
+    //take center
+    if(!move && state.board[1][1] === ""){
+        move = [1,1];
+    }
+
+    //take random
+    if(!move){
+        let empty = []; //collect all empty cells
+
+        for(let i=0; i<3; i++){
+            for(let j=0; j<3; j++){
+                if(state.board[i][j] === ""){
+                    empty.push([i,j]);
+            }
+        }
+    }
+    if(empty.length > 0){
+        move = empty[Math.floor(Math.random() * empty.length)];
+    }
+}
+
+//apply move
+if(move){
+    let [x, y] = move;
+
+    state.board[x][y] = bot;
+    logger.info("Bot played at: " + x + "," + y);
+
+    let result = checkWinner(state.board);
+    if(result){
+        state.winner = result.winner;
+        state.winningLine = result.line;
+    }
+    state.turn = state.turn === "X"?"O":"X";
+    state.turnStartTime = Date.now();
+
+    dispatcher.broadcastMessage(1, JSON.stringify(state));
+    }
+}
+
     return { state };
 }
 
 function matchLeave(ctx, logger, nk, dispatcher, tick, state, presences) {
     presences.forEach(p => {state.players = state.players.filter(pl => pl.userId !== p.userId)});
     logger.info("Player left. Remaining players: " + JSON.stringify(state.players));
+
+    //if one player remains they win
+    if(state.players.length === 1 && !state.winner){
+        const remainingPlayer = state.players[0];
+
+        state.winner = remainingPlayer.userId;
+        state.winReason = "opponent_left";
+
+        state.winningLine = [];
+
+        logger.info("Player left - remaining player wins:" + state.winner);
+        dispatcher.broadcastMessage(1, JSON.stringify(state));
+    }
+
+    //no player -> end match
     if (state.players.length === 0) {
         logger.info("No players left. Ending match.");
         return null;
@@ -227,7 +359,7 @@ function joinByCodeRpc(ctx, logger, nk, payload) {
 function findOrCreateMatch(ctx, logger, nk, payload){
      let matches = nk.matchList(10, true, "tic-tac-toe", 0, 2);
 
-    let availableMatch = matches.find(m => m.size < 2 && m.size > 0);
+    let availableMatch = matches.find(m => m.size === 1);
 
     if(availableMatch){
         logger.info("Joining existing match: " + availableMatch.matchId);

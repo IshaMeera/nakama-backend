@@ -1,2 +1,5 @@
 logger:
   level: "debug"
+database:
+  address:
+    - "postgres:localdb@postgres:5432/nakama?sslmode=disable"
